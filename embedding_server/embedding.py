@@ -45,10 +45,13 @@ def load_image(input_data: str) -> Image.Image:
     if input_data.startswith("data:image"):
         _header, data = input_data.split(",", 1)
         return Image.open(io.BytesIO(base64.b64decode(data))).convert("RGB")
-    # local file path
-    path = Path(input_data)
-    if path.exists():
-        return Image.open(path).convert("RGB")
+    # local file path — wrap in try/except to handle strings too long for the OS
+    try:
+        path = Path(input_data)
+        if path.exists():
+            return Image.open(path).convert("RGB")
+    except OSError:
+        pass
     # fallback: raw base64
     return Image.open(io.BytesIO(base64.b64decode(input_data))).convert("RGB")
 
