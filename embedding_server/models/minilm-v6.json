@@ -1,0 +1,10 @@
+{
+    "id": "minilm-v6",
+    "name": "MiniLM-L6-v2",
+    "hf_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "task": "text-embedding",
+    "description": "Lightweight sentence-transformer for text search",
+    "embedding_dim": 384,
+    "loader": "transformers_text",
+    "size_mb": 90
+}

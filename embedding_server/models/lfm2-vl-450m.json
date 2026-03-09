@@ -1,0 +1,10 @@
+{
+    "id": "lfm2-vl-450m",
+    "name": "LFM2-VL 450M",
+    "hf_model": "LiquidAI/LFM2-VL-450M",
+    "task": "image-to-text",
+    "description": "LiquidAI LFM2 450M vision-language model for image captioning",
+    "loader": "vl_model",
+    "size_mb": 900,
+    "context_window": 32768
+}
