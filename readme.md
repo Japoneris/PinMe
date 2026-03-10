@@ -1,6 +1,13 @@
-# PintMe
+# PinMe
 
 A local Pinterest-like image browser. Index your image folders, search by text description or visual similarity, and browse results in a web GUI — all running locally, no cloud required.
+
+Image search done through 2 mechanisms
+
+- image embedding (using [Dinov2-small](https://huggingface.co/facebook/dinov2-small))
+- text embedding (using [MiniLM-L6-v2](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)) + image captionning (using [LFM2-VL 450M](https://huggingface.co/LiquidAI/LFM2-VL-450M))
+
+Small LLMs, can run in almost any laptop, even if a small GPU is highly recommanded for processing images.
 
 ## Architecture
 
