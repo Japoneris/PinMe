@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from db import get_session
-from scanner import scan_folder
+from scanner import scan_folder, purge_missing
 
 
 def main():
@@ -21,6 +21,7 @@ def main():
         help="Path to SQLite database (default: ../pintme.db)",
     )
     parser.add_argument("--quiet", action="store_true", help="Suppress per-file output")
+    parser.add_argument("--keep-missing", action="store_true", help="Do not delete records for images no longer on disk")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -38,15 +39,19 @@ def main():
 
     session = get_session(args.db)
 
-    total = {"added": 0, "updated": 0, "errors": 0}
+    total = {"added": 0, "updated": 0, "errors": 0, "removed": 0}
 
     for folder in folders:
         print(f"\nScanning: {folder}")
-        counts = scan_folder(session, folder, verbose=not args.quiet)
-        for k in total:
+        counts, seen_paths = scan_folder(session, folder, verbose=not args.quiet)
+        for k in ("added", "updated", "errors"):
             total[k] += counts[k]
 
-    print(f"\nDone. Added: {total['added']}  Updated: {total['updated']}  Errors: {total['errors']}")
+        if not args.keep_missing:
+            removed = purge_missing(session, folder, seen_paths, verbose=not args.quiet)
+            total["removed"] += removed
+
+    print(f"\nDone. Added: {total['added']}  Updated: {total['updated']}  Removed: {total['removed']}  Errors: {total['errors']}")
 
 
 if __name__ == "__main__":

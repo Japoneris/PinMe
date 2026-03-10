@@ -1,0 +1,14 @@
+{
+  "manifest_version": 2,
+  "name": "pintest",
+  "version": "1.0",
+  "description": "Capture all images seen while browsing",
+  "permissions": [
+    "webRequest",
+    "<all_urls>",
+    "http://localhost:8765/*"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  }
+}

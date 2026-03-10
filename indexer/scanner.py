@@ -64,16 +64,16 @@ def iter_images(root: Path):
             yield path
 
 
-def scan_folder(session: Session, folder_path: str, verbose: bool = True) -> dict:
+def scan_folder(session: Session, folder_path: str, verbose: bool = True) -> tuple[dict, set]:
     """Scan a folder and upsert image records into the DB.
 
-    Returns a summary dict with counts.
+    Returns (counts dict, set of absolute path strings seen on disk).
     """
     root = Path(folder_path).resolve()
 
     if not root.exists():
         print(f"  [SKIP] Folder does not exist: {root}")
-        return {"skipped": 0, "added": 0, "updated": 0, "errors": 0}
+        return {"skipped": 0, "added": 0, "updated": 0, "errors": 0}, set()
 
     # Upsert Folder record
     folder = session.query(Folder).filter_by(path=str(root)).first()
@@ -83,13 +83,19 @@ def scan_folder(session: Session, folder_path: str, verbose: bool = True) -> dic
         session.flush()
 
     counts = {"added": 0, "updated": 0, "errors": 0}
+    seen_paths: set[str] = set()
 
-    for img_path in iter_images(root):
+    all_images = list(iter_images(root))
+    total = len(all_images)
+
+    for idx, img_path in enumerate(all_images, 1):
+        seen_paths.add(str(img_path))
+        progress = f"[{idx}/{total}]"
         try:
             file_hash = compute_hash(img_path)
         except Exception as e:
             if verbose:
-                print(f"  [ERROR] Cannot hash {img_path}: {e}")
+                print(f"  {progress} [ERROR] Cannot hash {img_path}: {e}")
             counts["errors"] += 1
             continue
 
@@ -99,7 +105,7 @@ def scan_folder(session: Session, folder_path: str, verbose: bool = True) -> dic
             # Same content already indexed — update path if it moved
             if existing.path != str(img_path):
                 if verbose:
-                    print(f"  [MOVE]  {existing.path} → {img_path}")
+                    print(f"  {progress} [MOVE]  {existing.path} → {img_path}")
                 existing.path = str(img_path)
                 existing.updated_at = datetime.utcnow()
                 counts["updated"] += 1
@@ -110,7 +116,7 @@ def scan_folder(session: Session, folder_path: str, verbose: bool = True) -> dic
         by_path = session.query(Image).filter_by(path=str(img_path)).first()
         if by_path is not None:
             if verbose:
-                print(f"  [REPLACE] {img_path} (old hash {by_path.hash[:8]}… → {file_hash[:8]}…)")
+                print(f"  {progress} [REPLACE] {img_path} (old hash {by_path.hash[:8]}… → {file_hash[:8]}…)")
             meta = extract_metadata(img_path)
             by_path.hash = file_hash
             by_path.image_embedded = False
@@ -132,9 +138,39 @@ def scan_folder(session: Session, folder_path: str, verbose: bool = True) -> dic
         counts["added"] += 1
 
         if verbose:
-            print(f"  [ADD]   {img_path.name}  ({meta['width']}x{meta['height']}, {meta['size_bytes'] // 1024} KB)")
+            print(f"  {progress} [ADD]   {img_path.name}  ({meta['width']}x{meta['height']}, {meta['size_bytes'] // 1024} KB)")
 
     folder.last_scanned_at = datetime.utcnow()
     session.commit()
 
-    return counts
+    return counts, seen_paths
+
+
+def purge_missing(
+    session: Session,
+    folder_path: str,
+    seen_paths: set,
+    verbose: bool = True,
+    dry_run: bool = False,
+) -> int:
+    """Delete DB records for images under folder_path that were not seen on disk.
+
+    Returns the number of records removed (or that would be removed if dry_run).
+    """
+    root = str(Path(folder_path).resolve())
+    candidates = session.query(Image).filter(Image.path.startswith(root)).all()
+
+    removed = 0
+    for image in candidates:
+        if image.path not in seen_paths:
+            if verbose:
+                tag = "[DRY-RUN] would remove" if dry_run else "[REMOVE]"
+                print(f"  {tag} {image.path}")
+            if not dry_run:
+                session.delete(image)
+            removed += 1
+
+    if not dry_run:
+        session.commit()
+
+    return removed

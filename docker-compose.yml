@@ -1,0 +1,99 @@
+volumes:
+  db_data:
+  chroma_data:
+
+networks:
+  pintme_net:
+    driver: bridge
+
+services:
+
+  # --------------------------------------------------------------------------
+  # Embedding server — DINOv2 (image) + MiniLM (text) inference
+  # --------------------------------------------------------------------------
+  embedding_server:
+    build:
+      context: ./embedding_server
+    ports:
+      - "8100:8100"
+    networks:
+      - pintme_net
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # Search API — text & image similarity search
+  # --------------------------------------------------------------------------
+  search_api:
+    build:
+      context: .
+      dockerfile: search_api/Dockerfile
+    ports:
+      - "8200:8200"
+    environment:
+      EMBED_SERVER: http://embedding_server:8100
+      DB_PATH: /data/pintme.db
+      CHROMA_DIR: /chromadb
+    volumes:
+      - db_data:/data
+      - chroma_data:/chromadb
+      # Images must be accessible at the same path stored in the DB.
+      # Mount your image directory here; configure config.json to use /images.
+      - ${IMAGES_DIR:-./test_images}:/images:ro
+    networks:
+      - pintme_net
+    depends_on:
+      - embedding_server
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # GUI — Streamlit frontend
+  # --------------------------------------------------------------------------
+  gui:
+    build:
+      context: ./gui
+    ports:
+      - "8501:8501"
+    environment:
+      SEARCH_API: http://search_api:8200
+    networks:
+      - pintme_net
+    depends_on:
+      - search_api
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # One-shot CLI tools — not started by default (profile: tools)
+  #
+  # Run manually:
+  #   docker compose run --rm indexer
+  #   docker compose run --rm rag
+  #
+  # Before running indexer, edit config.json so "explore" paths use /images
+  # (the container mount point), e.g.: { "explore": ["/images"] }
+  # --------------------------------------------------------------------------
+  indexer:
+    build:
+      context: .
+      dockerfile: indexer/Dockerfile
+    volumes:
+      - db_data:/data
+      - ${IMAGES_DIR:-./test_images}:/images:ro
+      - ./config.json:/config/config.json:ro
+    networks:
+      - pintme_net
+    profiles:
+      - tools
+
+  rag:
+    build:
+      context: .
+      dockerfile: rag/Dockerfile
+    volumes:
+      - db_data:/data
+      - chroma_data:/chromadb
+    networks:
+      - pintme_net
+    depends_on:
+      - embedding_server
+    profiles:
+      - tools
