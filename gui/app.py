@@ -2,6 +2,7 @@
 import base64
 import os
 
+import numpy as np
 import requests
 import streamlit as st
 
@@ -16,8 +17,20 @@ st.title("📌 PinMe")
 
 with st.sidebar:
     st.header("Settings")
-    N_RESULTS = st.slider("Number of results", min_value=4, max_value=100, value=12, step=4)
     COLS      = st.slider("Columns", min_value=1, max_value=8, value=4)
+    ROWS      = st.slider("Rows",    min_value=1, max_value=20, value=3)
+    N_RESULTS = COLS * ROWS
+
+    st.divider()
+    st.subheader("Diversity")
+    diversity_on = st.toggle("Remove near-duplicates", value=False)
+    excl_d = st.slider(
+        "Exclusion distance",
+        min_value=0.01, max_value=1.0, value=0.10, step=0.01,
+        disabled=not diversity_on,
+        help="Images closer than this distance to an already-kept result are excluded.",
+    )
+    OVERSAMPLE = 4   # fetch this many × N_RESULTS when diversity is on
 
 
 # ---------------------------------------------------------------------------
@@ -35,18 +48,48 @@ if "uploader_key" not in st.session_state:
 
 
 # ---------------------------------------------------------------------------
+# Diversity filter
+# ---------------------------------------------------------------------------
+
+def _cosine_dist(a: list, b: list) -> float:
+    a, b = np.array(a, dtype=np.float32), np.array(b, dtype=np.float32)
+    denom = np.linalg.norm(a) * np.linalg.norm(b)
+    return float(1.0 - np.dot(a, b) / denom) if denom > 0 else 0.0
+
+
+def apply_diversity(results: list, d: float, n_keep: int) -> list:
+    """Greedy pass: keep a result only if it is farther than d from all kept results."""
+    kept = []
+    for candidate in results:
+        emb = candidate.get("embedding")
+        if emb is None or all(_cosine_dist(emb, k["embedding"]) > d for k in kept):
+            kept.append(candidate)
+        if len(kept) >= n_keep:
+            break
+    return kept
+
+
+# ---------------------------------------------------------------------------
 # Search helpers
 # ---------------------------------------------------------------------------
+
+def _fetch_n() -> int:
+    """How many results to request from the API (oversample when diversity is on)."""
+    return N_RESULTS * OVERSAMPLE if diversity_on else N_RESULTS
+
 
 def search_text(query: str) -> None:
     try:
         r = requests.post(
             f"{SEARCH_API}/search/text",
-            json={"query": query, "n_results": N_RESULTS},
+            json={"query": query, "n_results": _fetch_n(), "include_embeddings": diversity_on},
             timeout=30,
         )
         r.raise_for_status()
-        st.session_state.results   = r.json()["results"]
+        results = r.json()["results"]
+        if diversity_on:
+            results = apply_diversity(results, excl_d, N_RESULTS)
+        st.session_state.results   = results
         st.session_state.error     = None
         st.session_state.ref_image = None
     except Exception as e:
@@ -60,11 +103,16 @@ def search_image(image_bytes: bytes) -> None:
         b64 = base64.b64encode(image_bytes).decode()
         r = requests.post(
             f"{SEARCH_API}/search/image",
-            json={"input": b64, "n_results": N_RESULTS+1},
+            json={"input": b64, "n_results": _fetch_n() + 1, "include_embeddings": diversity_on},
             timeout=30,
         )
         r.raise_for_status()
-        st.session_state.results   = r.json()["results"][:N_RESULTS]
+        results = r.json()["results"][1:]  # skip self (rank 0 is the query image itself)
+        if diversity_on:
+            results = apply_diversity(results, excl_d, N_RESULTS)
+        else:
+            results = results[:N_RESULTS]
+        st.session_state.results   = results
         st.session_state.error     = None
         st.session_state.ref_image = image_bytes
     except Exception as e:

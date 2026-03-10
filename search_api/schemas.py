@@ -6,11 +6,13 @@ from pydantic import BaseModel
 class TextSearchRequest(BaseModel):
     query: str
     n_results: int = 10
+    include_embeddings: bool = False
 
 
 class ImageSearchRequest(BaseModel):
     input: str          # local path, URL, data URL, or raw base64
     n_results: int = 10
+    include_embeddings: bool = False
 
 
 class SearchResult(BaseModel):
@@ -23,6 +25,7 @@ class SearchResult(BaseModel):
     height: Optional[int] = None
     size_bytes: Optional[int] = None
     caption: Optional[str] = None
+    embedding: Optional[list[float]] = None
 
 
 class SearchResponse(BaseModel):

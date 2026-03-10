@@ -85,6 +85,7 @@ async def text_search(request: TextSearchRequest):
             session=app.state.session,
             text_col=app.state.text_col,
             server=EMBED_SERVER,
+            include_embeddings=request.include_embeddings,
         )
     except Exception as e:
         raise HTTPException(500, detail=str(e))
@@ -100,6 +101,7 @@ async def image_search(request: ImageSearchRequest):
             session=app.state.session,
             image_col=app.state.image_col,
             server=EMBED_SERVER,
+            include_embeddings=request.include_embeddings,
         )
     except Exception as e:
         raise HTTPException(500, detail=str(e))

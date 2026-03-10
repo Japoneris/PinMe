@@ -38,12 +38,13 @@ def _embed_image(input_data: str, server: str) -> list[float]:
 # Result builder
 # ---------------------------------------------------------------------------
 
-def _build_results(chroma_result: dict, session: Session) -> list[SearchResult]:
-    ids = chroma_result["ids"][0]
-    distances = chroma_result["distances"][0]
+def _build_results(chroma_result: dict, session: Session, include_embeddings: bool = False) -> list[SearchResult]:
+    ids        = chroma_result["ids"][0]
+    distances  = chroma_result["distances"][0]
+    embeddings = chroma_result["embeddings"][0] if include_embeddings else [None] * len(ids)
 
     results = []
-    for rank, (hash_, distance) in enumerate(zip(ids, distances), start=1):
+    for rank, (hash_, distance, embedding) in enumerate(zip(ids, distances, embeddings), start=1):
         img = session.query(Image).filter_by(hash=hash_).first()
         if img is None:
             continue
@@ -57,6 +58,7 @@ def _build_results(chroma_result: dict, session: Session) -> list[SearchResult]:
             height=img.height,
             size_bytes=img.size_bytes,
             caption=img.caption,
+            embedding=embedding,
         ))
     return results
 
@@ -65,21 +67,25 @@ def _build_results(chroma_result: dict, session: Session) -> list[SearchResult]:
 # Search functions
 # ---------------------------------------------------------------------------
 
-def search_by_text(query: str, n_results: int, session: Session, text_col, server: str) -> SearchResponse:
+def search_by_text(query: str, n_results: int, session: Session, text_col, server: str,
+                   include_embeddings: bool = False) -> SearchResponse:
     embedding = _embed_text(query, server)
-    result = text_col.query(query_embeddings=[embedding], n_results=n_results)
+    include = ["distances", "embeddings"] if include_embeddings else ["distances"]
+    result = text_col.query(query_embeddings=[embedding], n_results=n_results, include=include)
     return SearchResponse(
         query_type="text",
         query=query,
-        results=_build_results(result, session),
+        results=_build_results(result, session, include_embeddings),
     )
 
 
-def search_by_image(input_data: str, n_results: int, session: Session, image_col, server: str) -> SearchResponse:
+def search_by_image(input_data: str, n_results: int, session: Session, image_col, server: str,
+                    include_embeddings: bool = False) -> SearchResponse:
     embedding = _embed_image(input_data, server)
-    result = image_col.query(query_embeddings=[embedding], n_results=n_results)
+    include = ["distances", "embeddings"] if include_embeddings else ["distances"]
+    result = image_col.query(query_embeddings=[embedding], n_results=n_results, include=include)
     return SearchResponse(
         query_type="image",
         query=input_data if len(input_data) < 200 else input_data[:80] + "...",
-        results=_build_results(result, session),
+        results=_build_results(result, session, include_embeddings),
     )
