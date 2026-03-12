@@ -1,5 +1,35 @@
 const SERVER_URL = "http://localhost:8765/image";
 
+let isEnabled = false;
+
+// Restore state on startup
+browser.storage.local.get("enabled").then((result) => {
+  isEnabled = result.enabled || false;
+  updateIcon(isEnabled);
+});
+
+function updateIcon(enabled) {
+  const title = enabled ? "PintMe: ON" : "PintMe: OFF";
+  browser.browserAction.setTitle({ title });
+  browser.browserAction.setIcon({
+    path: {
+      16: enabled ? "icons/on16.png" : "icons/off16.png",
+      32: enabled ? "icons/on32.png" : "icons/off32.png",
+    }
+  });
+}
+
+// Listen for toggle messages from the popup
+browser.runtime.onMessage.addListener((msg) => {
+  if (msg.type === "toggle") {
+    isEnabled = msg.enabled;
+    browser.storage.local.set({ enabled: isEnabled });
+    updateIcon(isEnabled);
+  } else if (msg.type === "getState") {
+    return Promise.resolve({ enabled: isEnabled });
+  }
+});
+
 // Convert ArrayBuffer to base64 without stack overflow on large images
 function arrayBufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
@@ -13,6 +43,8 @@ function arrayBufferToBase64(buffer) {
 
 browser.webRequest.onCompleted.addListener(
   async (details) => {
+    if (!isEnabled) return;
+
     const imageUrl = details.url;
     // documentUrl is the page that triggered the request
     const pageUrl = details.documentUrl || details.originUrl || "";
@@ -23,6 +55,9 @@ browser.webRequest.onCompleted.addListener(
 
       const mimetype = (response.headers.get("content-type") || "application/octet-stream")
         .split(";")[0].trim();
+
+      // Reject anything that is not a raster or vector image
+      if (!mimetype.startsWith("image/")) return;
 
       const buffer = await response.arrayBuffer();
       if (buffer.byteLength === 0) return;

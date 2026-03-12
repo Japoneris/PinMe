@@ -20,3 +20,19 @@ def get_text_collection(client: chromadb.PersistentClient) -> chromadb.Collectio
         name="text_embeddings",
         metadata={"hnsw:space": "cosine"},
     )
+
+
+def get_web_image_collection(client: chromadb.PersistentClient) -> chromadb.Collection:
+    """Collection for DINOv2 image embeddings of web-captured images."""
+    return client.get_or_create_collection(
+        name="web_image_embeddings",
+        metadata={"hnsw:space": "cosine"},
+    )
+
+
+def get_web_text_collection(client: chromadb.PersistentClient) -> chromadb.Collection:
+    """Collection for MiniLM text embeddings of web-captured images."""
+    return client.get_or_create_collection(
+        name="web_text_embeddings",
+        metadata={"hnsw:space": "cosine"},
+    )

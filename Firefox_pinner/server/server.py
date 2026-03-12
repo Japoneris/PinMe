@@ -7,7 +7,8 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+import cairosvg
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -92,11 +93,26 @@ class ImagePayload(BaseModel):
 
 @app.post("/image")
 def store_image(payload: ImagePayload):
+    mimetype = payload.mimetype.split(";")[0].strip()
+
+    # Reject anything that is not an image
+    if not mimetype.startswith("image/"):
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {mimetype}")
+
     data = base64.b64decode(payload.image_data)
+
+    # Convert SVG to PNG so the RAG pipeline can process it
+    if mimetype == "image/svg+xml":
+        try:
+            data = cairosvg.svg2png(bytestring=data)
+        except Exception as e:
+            raise HTTPException(status_code=422, detail=f"SVG conversion failed: {e}")
+        mimetype = "image/png"
+
     content_hash = hashlib.sha256(data).hexdigest()
 
-    # Derive file extension from mimetype
-    ext = mimetypes.guess_extension(payload.mimetype) or ""
+    # Derive file extension from (possibly updated) mimetype
+    ext = mimetypes.guess_extension(mimetype) or ""
     ext = EXT_OVERRIDES.get(ext, ext)
     filename = f"{content_hash}{ext}"
     filepath = os.path.join(IMAGES_DIR, filename)
@@ -117,7 +133,7 @@ def store_image(payload: ImagePayload):
                 ext,
                 payload.image_url,
                 payload.page_url,
-                payload.mimetype,
+                mimetype,
                 len(data),
                 datetime.now(timezone.utc).isoformat(),
             ),

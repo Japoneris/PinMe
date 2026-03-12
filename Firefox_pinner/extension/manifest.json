@@ -6,9 +6,18 @@
   "permissions": [
     "webRequest",
     "<all_urls>",
-    "http://localhost:8765/*"
+    "http://localhost:8765/*",
+    "storage"
   ],
   "background": {
     "scripts": ["background.js"]
+  },
+  "browser_action": {
+    "default_title": "PintMe: OFF",
+    "default_icon": {
+      "16": "icons/off16.png",
+      "32": "icons/off32.png"
+    },
+    "default_popup": "popup.html"
   }
 }

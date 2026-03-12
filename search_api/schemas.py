@@ -32,3 +32,23 @@ class SearchResponse(BaseModel):
     query_type: str     # "text" or "image"
     query: str          # the original query string / image path
     results: list[SearchResult]
+
+
+class WebSearchResult(BaseModel):
+    rank: int
+    distance: float
+    hash: str
+    path: str           # local file path for serving
+    image_url: str
+    page_url: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    mimetype: Optional[str] = None
+    caption: Optional[str] = None
+    embedding: Optional[list[float]] = None
+
+
+class WebSearchResponse(BaseModel):
+    query_type: str
+    query: str
+    results: list[WebSearchResult]
